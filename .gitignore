@@ -1,0 +1,28 @@
+# Ambientes e Variáveis Sensíveis
+.env
+.env.local
+.env.*.local
+*.env
+
+# Python & DNT
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+*.so
+
+# Node / Frontend
+node_modules/
+.next/
+out/
+build/
+dist/
+*.log
+
+# Docker & IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
