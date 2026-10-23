@@ -35,12 +35,7 @@ pg_url = (
     f"postgresql+psycopg2://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}"
     f"@{os.getenv('POSTGRES_HOST')}:{os.getenv('POSTGRES_PORT')}/{os.getenv('POSTGRES_DB')}"
 )
-pg_engine = create_engine(
-    pg_url,
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20
-)
+pg_engine = create_engine(pg_url, pool_pre_ping=True, pool_size=10, max_overflow=20)
 
 
 @asynccontextmanager
@@ -75,12 +70,9 @@ async def security_and_audit_middleware(request: Request, call_next):
     process_time_ms = round((time.time() - start_time) * 1000, 2)
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Process-Time-MS"] = str(process_time_ms)
-
-    # Hardening de Cabeçalhos de Segurança HTTP (OWASP)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
-    response.headers["Content-Security-Policy"] = "default-src 'self'"
 
     extra_audit = {
         "event": "API_AUDIT_TRAIL",
@@ -92,10 +84,7 @@ async def security_and_audit_middleware(request: Request, call_next):
         "client_ip": request.client.host if request.client else "unknown"
     }
 
-    logger.info(
-        f"HTTPRequest {request.method} {request.url.path} - {response.status_code}",
-        extra={"extra_data": extra_audit}
-    )
+    logger.info(f"HTTPRequest {request.method} {request.url.path} - {response.status_code}", extra={"extra_data": extra_audit})
     return response
 
 
@@ -116,19 +105,10 @@ def health_readiness():
         latency_dw_ms = round((time.time() - t0) * 1000, 2)
         status_dw = "UP"
     except Exception as e:
-        logger.error(f"Falha na conexão com PostgreSQL DW: {e}", extra={"extra_data": {"event": "DW_CONN_ERROR"}})
+        logger.error(f"Falha na conexão com DW: {e}", extra={"extra_data": {"event": "DW_CONN_ERROR"}})
 
     is_ready = (status_dw == "UP")
-
-    return {
-        "status": "READY" if is_ready else "NOT_READY",
-        "checks": {
-            "postgres_dw": {
-                "status": status_dw,
-                "latency_ms": latency_dw_ms
-            }
-        }
-    }
+    return {"status": "READY" if is_ready else "NOT_READY", "checks": {"postgres_dw": {"status": status_dw, "latency_ms": latency_dw_ms}}}
 
 
 @app.get("/api/dashboard/resumo")
@@ -138,9 +118,10 @@ def get_resumo(dias: int = Query(180)):
             q_total = "SELECT COUNT(*) FROM fact_ordens_servico WHERE prefixo_veiculo NOT LIKE 'OFI%'"
             total_os_periodo = int(conn.execute(text(q_total)).scalar() or 0)
 
+            # OS EXECUTADAS: data_fechamento a partir de 01/01/2026
             q_fechadas = (
                 "SELECT COUNT(*) FROM fact_ordens_servico "
-                "WHERE data_fechamento IS NOT NULL AND prefixo_veiculo NOT LIKE 'OFI%'"
+                "WHERE data_fechamento >= '2026-01-01 00:00:00' AND prefixo_veiculo NOT LIKE 'OFI%'"
             )
             os_fechadas_periodo = int(conn.execute(text(q_fechadas)).scalar() or 0)
 

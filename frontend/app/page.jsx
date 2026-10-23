@@ -132,9 +132,9 @@ export default function Dashboard() {
             {abaAtiva === 'operacional' ? (
               <>
                 <div style={styles.grid4}>
-                  {matchSearch('OSs Fechadas (2026)', metricas?.os_fechadas_periodo) && (
+                  {matchSearch('OS EXECUTADAS', metricas?.os_fechadas_periodo) && (
                     <div style={{...styles.card, borderTop: '4px solid #22c55e'}}>
-                      <h2 style={styles.cardTitle}>OSs Fechadas (2026)</h2>
+                      <h2 style={styles.cardTitle}>OS EXECUTADAS</h2>
                       <p style={styles.cardValue}>{metricas?.os_fechadas_periodo ?? 0}</p>
                       <span style={styles.cardFooter}>Concluídas no ano de 2026</span>
                     </div>
