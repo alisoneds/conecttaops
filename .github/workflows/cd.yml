@@ -1,0 +1,47 @@
+name: ConecttaOps - Deploy Continuo & Auditoria (CD)
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+    branches:
+      - main
+
+jobs:
+  security-audit:
+    name: Auditoria de Seguranca em Containers (Trivy Scan)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do Repositorio
+        uses: actions/checkout@v4
+
+      - name: Build da Imagem do Backend
+        run: docker build -t conecttaops_backend:audit ./backend
+
+      - name: Varredura de Vulnerabilidades no Container (Trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'conecttaops_backend:audit'
+          format: 'table'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
+
+  deploy-production:
+    name: Deploy em Producao (Garagem 2 - JTU)
+    needs: [security-audit]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do Repositorio
+        uses: actions/checkout@v4
+
+      - name: Registro e Auditoria do Log de Deploy
+        run: |
+          echo "=========================================="
+          echo "DEPLOY AUDIT LOG"
+          echo "Data/Hora UTC: $(date -u)"
+          echo "Commit SHA: ${{ github.sha }}"
+          echo "Autor: ${{ github.actor }}"
+          echo "Branch/Tag: ${{ github.ref }}"
+          echo "=========================================="
