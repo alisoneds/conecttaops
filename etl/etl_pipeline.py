@@ -8,18 +8,25 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 load_dotenv()
 
+
 def executar_pipeline():
     oracledb.init_oracle_client()
-    
-    oracle_url = f"oracle+oracledb://{os.getenv('ORACLE_USER')}:{os.getenv('ORACLE_PASS')}@{os.getenv('ORACLE_HOST')}:{os.getenv('ORACLE_PORT')}/{os.getenv('ORACLE_SERVICE')}"
-    pg_url = f"postgresql+psycopg2://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}@{os.getenv('POSTGRES_HOST')}:{os.getenv('POSTGRES_PORT')}/{os.getenv('POSTGRES_DB')}"
-    
+
+    oracle_url = (
+        f"oracle+oracledb://{os.getenv('ORACLE_USER')}:{os.getenv('ORACLE_PASS')}"
+        f"@{os.getenv('ORACLE_HOST')}:{os.getenv('ORACLE_PORT')}/{os.getenv('ORACLE_SERVICE')}"
+    )
+    pg_url = (
+        f"postgresql+psycopg2://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}"
+        f"@{os.getenv('POSTGRES_HOST')}:{os.getenv('POSTGRES_PORT')}/{os.getenv('POSTGRES_DB')}"
+    )
+
     oracle_engine = create_engine(oracle_url)
     pg_engine = create_engine(pg_url)
 
-    # Mapeamento oficial e atualizado de TODAS as 27 linhas ativas da JTU Jacareí
+    # Consulta estritamente isolada para a Empresa 2 (JTU - Jacareí)
     query_extracao_os = """
-        SELECT 
+        SELECT
             os.NUMEROOS as id_os,
             veic.PREFIXOVEIC as prefixo_veiculo,
             os.CONDICAOOS as status_os,
@@ -62,9 +69,9 @@ def executar_pipeline():
             COALESCE(os.DATAABERTURAOS, os.DATAFECHAMENTOOS, SYSDATE) as data_abertura,
             os.DATAFECHAMENTOOS as data_fechamento,
             COALESCE(pecas.CUSTO_TOTAL, 0) as custo_pecas,
-            CASE 
+            CASE
                 WHEN os.DATAFECHAMENTOOS IS NOT NULL THEN ROUND((os.DATAFECHAMENTOOS - COALESCE(os.DATAABERTURAOS, os.DATAFECHAMENTOOS)) * 24, 2)
-                ELSE 0 
+                ELSE 0
             END as tempo_atendimento_horas
         FROM GLOBUS.MAN_OS os
         LEFT JOIN GLOBUS.FRT_CADVEICULOS veic ON os.CODIGOVEIC = veic.CODIGOVEIC
@@ -73,6 +80,7 @@ def executar_pipeline():
             SELECT m_func.CODINTOS, MIN(func.NOMEFUNC) as NOMEFUNC
             FROM GLOBUS.MAN_OSFUNCIONARIOS m_func
             JOIN GLOBUS.FLP_FUNCIONARIOS func ON m_func.CODINTFUNC = func.CODINTFUNC
+            WHERE func.CODIGOEMPRESA = 2
             GROUP BY m_func.CODINTOS
         ) mec ON os.CODINTOS = mec.CODINTOS
         LEFT JOIN (
@@ -80,18 +88,20 @@ def executar_pipeline():
             FROM GLOBUS.EST_REQUISICAO req
             JOIN GLOBUS.EST_ITENSREQUISICAO ireq ON req.NUMERORQ = ireq.NUMERORQ
             JOIN GLOBUS.EST_CADMATERIAL mat ON ireq.CODIGOMATINT = mat.CODIGOMATINT
+            WHERE req.CODIGOEMPRESA = 2
             GROUP BY req.CODINTOS
         ) pecas ON os.CODINTOS = pecas.CODINTOS
-        WHERE os.DATAABERTURAOS >= ADD_MONTHS(SYSDATE, -6) OR os.DATAABERTURAOS IS NULL
-          AND os.CODIGOEMPRESA = 2 
+        WHERE os.CODIGOEMPRESA = 2
+          AND (os.DATAABERTURAOS >= ADD_MONTHS(SYSDATE, -6) OR os.DATAABERTURAOS IS NULL)
+          AND (veic.PREFIXOVEIC IS NULL OR veic.PREFIXOVEIC NOT LIKE 'OFI%')
     """
 
     query_extracao_req = """
-        SELECT 
+        SELECT
             req.NUMERORQ as numero_rq,
             COALESCE(req.DATARQ, SYSDATE) as data_rq,
             req.CODINTOS as id_os,
-            CASE 
+            CASE
                 WHEN os.DATAFECHAMENTOOS IS NOT NULL OR os.CONDICAOOS IN ('F', 'C', 'FECHADA') THEN 'FECHADA'
                 ELSE 'ABERTA'
             END as status_os_req,
@@ -101,18 +111,18 @@ def executar_pipeline():
         JOIN GLOBUS.EST_ITENSREQUISICAO ireq ON req.NUMERORQ = ireq.NUMERORQ
         JOIN GLOBUS.EST_CADMATERIAL mat ON ireq.CODIGOMATINT = mat.CODIGOMATINT
         LEFT JOIN GLOBUS.MAN_OS os ON req.CODINTOS = os.CODINTOS
-        WHERE req.DATARQ >= ADD_MONTHS(SYSDATE, -6) OR req.DATARQ IS NULL
-          AND req.CODIGOEMPRESA = 2
+        WHERE req.CODIGOEMPRESA = 2
+          AND (req.DATARQ >= ADD_MONTHS(SYSDATE, -6) OR req.DATARQ IS NULL)
           AND req.CODINTOS IS NOT NULL
     """
 
     try:
-        logger.info("⏳ Extraindo registros do Oracle...")
+        logger.info("⏳ Extraindo registros isolados da Empresa 2 (JTU) no Oracle...")
         with oracle_engine.connect() as oracle_conn:
             res_os = oracle_conn.execute(text(query_extracao_os)).fetchall()
             res_req = oracle_conn.execute(text(query_extracao_req)).fetchall()
-        
-        logger.info(f"✅ Extração Oracle realizada com sucesso: {len(res_os)} OSs e {len(res_req)} requisições de peças.")
+
+        logger.info(f"✅ Extração Oracle realizada: {len(res_os)} OSs e {len(res_req)} requisições exclusivas JTU.")
 
         ddl_tables = """
         DROP TABLE IF EXISTS fact_ordens_servico CASCADE;
@@ -149,13 +159,13 @@ def executar_pipeline():
         );
         """
 
-        logger.info("⏳ Recriando estrutura de tabelas no PostgreSQL DW...")
+        logger.info("⏳ Recriando estrutura do Data Warehouse...")
         with pg_engine.begin() as pg_conn:
             pg_conn.execute(text(ddl_tables))
 
         chaves_os = [
             'id_os', 'prefixo_veiculo', 'status_os', 'tipo_manutencao', 'origem_demanda', 'linha_atendida',
-            'defeito_reclamado', 'nome_mecanico', 'descricao_peca', 'km_execucao', 
+            'defeito_reclamado', 'nome_mecanico', 'descricao_peca', 'km_execucao',
             'observacao_os', 'data_abertura', 'data_fechamento', 'custo_pecas', 'tempo_atendimento_horas'
         ]
         dados_os = [dict(zip(chaves_os, linha)) for linha in res_os]
@@ -163,32 +173,34 @@ def executar_pipeline():
         chaves_req = ['numero_rq', 'data_rq', 'id_os', 'status_os_req', 'descricao_material', 'valor_total']
         dados_req = [dict(zip(chaves_req, linha)) for linha in res_req]
 
-        logger.info("⏳ Inserindo dados no Data Warehouse...")
-        
+        logger.info("⏳ Gravando dados sanitizados no Data Warehouse...")
+
         insert_os = """
-            INSERT INTO fact_ordens_servico 
+            INSERT INTO fact_ordens_servico
             (id_os, prefixo_veiculo, status_os, tipo_manutencao, origem_demanda, linha_atendida, defeito_reclamado, nome_mecanico, descricao_peca, km_execucao, observacao_os, data_abertura, data_fechamento, custo_pecas, tempo_atendimento_horas)
-            VALUES 
+            VALUES
             (:id_os, :prefixo_veiculo, :status_os, :tipo_manutencao, :origem_demanda, :linha_atendida, :defeito_reclamado, :nome_mecanico, :descricao_peca, :km_execucao, :observacao_os, :data_abertura, :data_fechamento, :custo_pecas, :tempo_atendimento_horas)
         """
 
         insert_req = """
-            INSERT INTO fact_requisicoes_pecas 
+            INSERT INTO fact_requisicoes_pecas
             (numero_rq, data_rq, id_os, status_os_req, descricao_material, valor_total)
-            VALUES 
+            VALUES
             (:numero_rq, :data_rq, :id_os, :status_os_req, :descricao_material, :valor_total)
         """
 
         with pg_engine.begin() as pg_conn:
-            pg_conn.execute(text(insert_os), dados_os)
+            if dados_os:
+                pg_conn.execute(text(insert_os), dados_os)
             if dados_req:
                 pg_conn.execute(text(insert_req), dados_req)
-            
-        logger.info("🚀 Pipeline ETL finalizado e gravado com sucesso!")
+
+        logger.info("🚀 Pipeline ETL finalizado com sucesso!")
 
     except Exception as e:
         logger.error(f"❌ Erro no Pipeline ETL: {e}")
         raise e
+
 
 if __name__ == "__main__":
     executar_pipeline()
