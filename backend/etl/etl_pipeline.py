@@ -24,7 +24,7 @@ def executar_pipeline():
     oracle_engine = create_engine(oracle_url)
     pg_engine = create_engine(pg_url)
 
-    # Consulta estritamente isolada para a Empresa 2 (JTU - Jacareí)
+    # Extração isolada da Empresa 2 (JTU) referente ao ano de 2026 em diante
     query_extracao_os = """
         SELECT
             os.NUMEROOS as id_os,
@@ -92,7 +92,7 @@ def executar_pipeline():
             GROUP BY req.CODINTOS
         ) pecas ON os.CODINTOS = pecas.CODINTOS
         WHERE os.CODIGOEMPRESA = 2
-          AND (os.DATAABERTURAOS >= ADD_MONTHS(SYSDATE, -6) OR os.DATAABERTURAOS IS NULL)
+          AND (os.DATAABERTURAOS >= TO_DATE('2026-01-01', 'YYYY-MM-DD') OR os.DATAABERTURAOS IS NULL)
           AND (veic.PREFIXOVEIC IS NULL OR veic.PREFIXOVEIC NOT LIKE 'OFI%')
     """
 
@@ -112,17 +112,17 @@ def executar_pipeline():
         JOIN GLOBUS.EST_CADMATERIAL mat ON ireq.CODIGOMATINT = mat.CODIGOMATINT
         LEFT JOIN GLOBUS.MAN_OS os ON req.CODINTOS = os.CODINTOS
         WHERE req.CODIGOEMPRESA = 2
-          AND (req.DATARQ >= ADD_MONTHS(SYSDATE, -6) OR req.DATARQ IS NULL)
+          AND (req.DATARQ >= TO_DATE('2026-01-01', 'YYYY-MM-DD') OR req.DATARQ IS NULL)
           AND req.CODINTOS IS NOT NULL
     """
 
     try:
-        logger.info("⏳ Extraindo registros isolados da Empresa 2 (JTU) no Oracle...")
+        logger.info("⏳ Extraindo registros de 2026 da Empresa 2 (JTU) no Oracle...")
         with oracle_engine.connect() as oracle_conn:
             res_os = oracle_conn.execute(text(query_extracao_os)).fetchall()
             res_req = oracle_conn.execute(text(query_extracao_req)).fetchall()
 
-        logger.info(f"✅ Extração Oracle realizada: {len(res_os)} OSs e {len(res_req)} requisições exclusivas JTU.")
+        logger.info(f"✅ Extração Oracle realizada: {len(res_os)} OSs e {len(res_req)} requisições do ano de 2026.")
 
         ddl_tables = """
         DROP TABLE IF EXISTS fact_ordens_servico CASCADE;
@@ -173,7 +173,7 @@ def executar_pipeline():
         chaves_req = ['numero_rq', 'data_rq', 'id_os', 'status_os_req', 'descricao_material', 'valor_total']
         dados_req = [dict(zip(chaves_req, linha)) for linha in res_req]
 
-        logger.info("⏳ Gravando dados sanitizados no Data Warehouse...")
+        logger.info("⏳ Gravando dados de 2026 no Data Warehouse...")
 
         insert_os = """
             INSERT INTO fact_ordens_servico
@@ -195,7 +195,7 @@ def executar_pipeline():
             if dados_req:
                 pg_conn.execute(text(insert_req), dados_req)
 
-        logger.info("🚀 Pipeline ETL finalizado com sucesso!")
+        logger.info("🚀 Pipeline ETL de 2026 finalizado com sucesso!")
 
     except Exception as e:
         logger.error(f"❌ Erro no Pipeline ETL: {e}")
