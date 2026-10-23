@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
 import oracledb
 
-# Configuração de Logger Estruturado JSON Enterprise
+
 class JSONFormatter(logging.Formatter):
     def format(self, record):
         log_obj = {
@@ -23,6 +23,7 @@ class JSONFormatter(logging.Formatter):
             log_obj.update(record.extra_data)
         return json.dumps(log_obj)
 
+
 handler = logging.StreamHandler()
 handler.setFormatter(JSONFormatter())
 logger = logging.getLogger("conecttaops")
@@ -34,7 +35,12 @@ pg_url = (
     f"postgresql+psycopg2://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}"
     f"@{os.getenv('POSTGRES_HOST')}:{os.getenv('POSTGRES_PORT')}/{os.getenv('POSTGRES_DB')}"
 )
-pg_engine = create_engine(pg_url, pool_pre_ping=True)
+pg_engine = create_engine(
+    pg_url,
+    pool_pre_ping=True,
+    pool_size=10,
+    max_overflow=20
+)
 
 
 @asynccontextmanager
@@ -54,22 +60,28 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
 
 @app.middleware("http")
-async def audit_logging_middleware(request: Request, call_next):
+async def security_and_audit_middleware(request: Request, call_next):
     request_id = str(uuid.uuid4())
     start_time = time.time()
-    
+
     response: Response = await call_next(request)
-    
+
     process_time_ms = round((time.time() - start_time) * 1000, 2)
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Process-Time-MS"] = str(process_time_ms)
-    
+
+    # Hardening de Cabeçalhos de Segurança HTTP (OWASP)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Content-Security-Policy"] = "default-src 'self'"
+
     extra_audit = {
         "event": "API_AUDIT_TRAIL",
         "request_id": request_id,
@@ -79,12 +91,13 @@ async def audit_logging_middleware(request: Request, call_next):
         "duration_ms": process_time_ms,
         "client_ip": request.client.host if request.client else "unknown"
     }
-    
-    logger.info(f"HTTPRequest {request.method} {request.url.path} - {response.status_code}", extra={"extra_data": extra_audit})
+
+    logger.info(
+        f"HTTPRequest {request.method} {request.url.path} - {response.status_code}",
+        extra={"extra_data": extra_audit}
+    )
     return response
 
-
-# --- PROBES DE HEALTH CHECK & OBSERVABILIDADE ---
 
 @app.get("/health/live")
 def health_liveness():
@@ -95,7 +108,7 @@ def health_liveness():
 def health_readiness():
     status_dw = "DOWN"
     latency_dw_ms = 0.0
-    
+
     try:
         t0 = time.time()
         with pg_engine.connect() as conn:
@@ -104,9 +117,9 @@ def health_readiness():
         status_dw = "UP"
     except Exception as e:
         logger.error(f"Falha na conexão com PostgreSQL DW: {e}", extra={"extra_data": {"event": "DW_CONN_ERROR"}})
-    
+
     is_ready = (status_dw == "UP")
-    
+
     return {
         "status": "READY" if is_ready else "NOT_READY",
         "checks": {
@@ -117,8 +130,6 @@ def health_readiness():
         }
     }
 
-
-# --- ENDPOINTS OPERACIONAIS DA API ---
 
 @app.get("/api/dashboard/resumo")
 def get_resumo(dias: int = Query(180)):
