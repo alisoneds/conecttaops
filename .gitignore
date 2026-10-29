@@ -11,3 +11,5 @@ build/
 *.log
 .env
 .DS_Store
+
+actions-runner/
