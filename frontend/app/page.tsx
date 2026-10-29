@@ -1,36 +1,33 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Wrench, Bus, CheckCircle2, AlertCircle } from 'lucide-react';
 
-interface Veiculo {
-  id: number;
-  prefixo: string;
-  placa: string;
-  modelo: string;
-  status: string;
-  garagem: string;
+interface MetricOs {
+  os_em_aberto: number;
+  preventivas: number;
+  corretivas: number;
 }
 
 export default function Home() {
-  const [dbStatus, setDbStatus] = useState<string>('A verificar...');
-  const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
+  const [totalFrota, setTotalFrota] = useState<number | null>(null);
+  const [metricasOs, setMetricasOs] = useState<MetricOs | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        // Valida conexão à DB
-        const resDb = await fetch('http://192.168.50.101:8000/api/health/db');
-        const dataDb = await resDb.json();
-        setDbStatus(dataDb.status === 'success' ? 'Online' : 'Erro');
-
-        // Procura frota
-        const resFrota = await fetch('http://192.168.50.101:8000/api/frota/');
+        const [resFrota, resOs] = await Promise.all([
+          fetch('http://192.168.50.101:8000/api/frota/'),
+          fetch('http://192.168.50.101:8000/api/os/metrics')
+        ]);
+        
         const dataFrota = await resFrota.json();
-        setVeiculos(dataFrota);
+        const dataOs = await resOs.json();
+
+        setTotalFrota(Array.isArray(dataFrota) ? dataFrota.length : 0);
+        setMetricasOs(dataOs);
       } catch (err) {
-        setDbStatus('Indisponível');
+        console.error('Erro ao carregar dados:', err);
       } finally {
         setLoading(false);
       }
@@ -40,40 +37,63 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-8">
-      <header className="max-w-6xl mx-auto flex items-center justify-between border-b border-slate-800 pb-6 mb-8">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-blue-600/20 text-blue-400 rounded-xl border border-blue-500/30">
-            <Wrench size={32} />
-          </div>
+      <div className="max-w-7xl mx-auto space-y-8">
+        
+        {/* Header */}
+        <header className="border-b border-slate-800 pb-5 flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">ConecttaOps</h1>
-            <p className="text-sm text-slate-400">HUB de Inovação Operacional — Garagem 2 (JTU)</p>
+            <h1 className="text-3xl font-bold tracking-tight text-white">ConecttaOps</h1>
+            <p className="text-sm text-slate-400">Garagem 002 — Jacareí Transporte Urbano (JTU)</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+            </span>
+            <span className="text-xs font-mono text-emerald-400">AUDITORIA ATIVA</span>
+          </div>
+        </header>
+
+        {/* Grid de Métricas */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          {/* Total Frota */}
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
+            <p className="text-sm font-medium text-slate-400">Frota Ativa Operacional</p>
+            <p className="text-4xl font-extrabold text-white mt-2">
+              {loading ? '...' : totalFrota}
+            </p>
+            <p className="text-xs text-slate-500 mt-2">Tipos 016, 029, 057</p>
+          </div>
+
+          {/* OS em Aberto */}
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
+            <p className="text-sm font-medium text-amber-400">OSs em Aberto</p>
+            <p className="text-4xl font-extrabold text-white mt-2">
+              {loading ? '...' : metricasOs?.os_em_aberto}
+            </p>
+            <p className="text-xs text-slate-500 mt-2">Requer atenção em oficina</p>
+          </div>
+
+          {/* Manutenções Preventivas */}
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
+            <p className="text-sm font-medium text-blue-400">Preventivas (desde 2024)</p>
+            <p className="text-4xl font-extrabold text-white mt-2">
+              {loading ? '...' : metricasOs?.preventivas.toLocaleString('pt-BR')}
+            </p>
+            <p className="text-xs text-slate-500 mt-2">Planos de revisão</p>
+          </div>
+
+          {/* Manutenções Corretivas */}
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
+            <p className="text-sm font-medium text-rose-400">Corretivas (desde 2024)</p>
+            <p className="text-4xl font-extrabold text-white mt-2">
+              {loading ? '...' : metricasOs?.corretivas.toLocaleString('pt-BR')}
+            </p>
+            <p className="text-xs text-slate-500 mt-2">Intervenções de reparo</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-slate-400">PostgreSQL DW:</span>
-          {dbStatus === 'Online' ? (
-            <span className="flex items-center gap-1.5 text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-3 py-1 rounded-full font-medium">
-              <CheckCircle2 size={14} /> Conectado
-            </span>
-          ) : (
-            <span className="flex items-center gap-1.5 text-xs bg-rose-500/10 text-rose-400 border border-rose-500/30 px-3 py-1 rounded-full font-medium">
-              <AlertCircle size={14} /> {dbStatus}
-            </span>
-          )}
-        </div>
-      </header>
-
-      <section className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-slate-400">Total na Frota</span>
-            <Bus className="text-blue-400" size={20} />
-          </div>
-          <p className="text-3xl font-bold">{veiculos.length}</p>
-        </div>
-      </section>
+      </div>
     </main>
   );
 }
