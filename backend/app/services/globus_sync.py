@@ -6,6 +6,7 @@ from app.db.globus import get_globus_connection
 from app.db.session import AsyncSessionLocal
 from app.models.frota import Veiculo
 from app.models.ordem_servico import OrdemServico
+from app.models.abastecimento import Abastecimento
 from app.models.auditoria import AuditLogSync
 from app.services.data_auditor import DataAuditor
 from app.core.config import settings
@@ -31,9 +32,9 @@ def mapear_status_os(status_raw: str) -> str:
     return "Aberta"
 
 async def sync_frota_globus():
-    logger.info("Iniciando extração de Frota e OSs a partir de 01/01/2024...")
+    logger.info("Iniciando extração unificada (Frota + OS + Abastecimento) a partir de 01/01/2024...")
     
-    # 1. Query da Frota Ativa (Empresa 2 / Garagem 2 - JTU)
+    # 1. Query Frota Ativa (Empresa 2 / Garagem 2 - JTU)
     oracle_query_veiculos = """
         SELECT 
             PREFIXOVEIC AS PREFIXO,
@@ -49,7 +50,7 @@ async def sync_frota_globus():
           AND (CODIGOTPFROTA NOT IN (12, 13) OR CODIGOTPFROTA IS NULL)
     """
     
-    # 2. Query das OSs (Abertas/Em Andamento OU Abertas a partir de 01/01/2024)
+    # 2. Query OSs
     oracle_query_os = """
         SELECT 
             TO_CHAR(os.NUMEROOS) AS NUMERO_OS,
@@ -68,20 +69,52 @@ async def sync_frota_globus():
           AND (os.CONDICAOOS IN ('A', 'E') OR os.DATAABERTURAOS >= TO_DATE('2024-01-01', 'YYYY-MM-DD'))
         ORDER BY os.DATAABERTURAOS DESC
     """
+
+    # 3. Query Abastecimentos com subquery defensiva para Odômetro
+    oracle_query_abast = """
+        SELECT 
+            TRIM(v.PREFIXOVEIC) || '_' || TO_CHAR(a.DATAABASTCARRO, 'YYYYMMDD_HH24MISS') || '_' || TO_CHAR(NVL(a.SEQUENCIAABASTCARRO, 0)) AS CHAVE_ABASTECIMENTO,
+            TRIM(v.PREFIXOVEIC) AS VEICULO_PREFIXO,
+            a.DATAABASTCARRO AS DATA_ABASTECIMENTO,
+            NVL(a.QTDCOMB, 0) AS LITROS,
+            NVL(a.BBACOMB, 0) AS BOMBA,
+            NVL(a.TQUCOMB, 0) AS TANQUE,
+            (
+                SELECT NVL(MAX(k.KMPERCORRIDOVELOC), 0)
+                FROM GLOBUS.VWABA_KMACUMULADOVEIC k
+                WHERE k.CODIGOVEIC = a.CODIGOVEIC
+                  AND TRUNC(k.DATAVELOC) = TRUNC(a.DATAABASTCARRO)
+            ) AS KM_RODADO,
+            (
+                SELECT NVL(MAX(k.KMACUMULADOVELOC), 0)
+                FROM GLOBUS.VWABA_KMACUMULADOVEIC k
+                WHERE k.CODIGOVEIC = a.CODIGOVEIC
+                  AND TRUNC(k.DATAVELOC) = TRUNC(a.DATAABASTCARRO)
+            ) AS KM_ODOMETRO
+        FROM GLOBUS.VWABA_CONFABASTCARRO a
+        JOIN GLOBUS.FRT_CADVEICULOS v ON a.CODIGOVEIC = v.CODIGOVEIC
+        WHERE v.CODIGOEMPRESA = :empresa
+          AND v.CODIGOGA = :garagem
+          AND v.CONDICAOVEIC = 'A'
+          AND (v.CODIGOTPFROTA NOT IN (12, 13) OR v.CODIGOTPFROTA IS NULL)
+          AND a.DATAABASTCARRO >= TO_DATE('2024-01-01', 'YYYY-MM-DD')
+        ORDER BY a.DATAABASTCARRO DESC
+    """
     
     veiculos_raw = []
     os_raw = []
+    abast_raw = []
     
     try:
         conn = get_globus_connection()
         with conn.cursor() as cursor:
-            # Extrair Frota
+            # Frota
             cursor.execute(oracle_query_veiculos, empresa=settings.EMPRESA_CODIGO, garagem=settings.GARAGEM_CODIGO)
             cols_v = [col[0].lower() for col in cursor.description]
             for row in cursor.fetchall():
                 veiculos_raw.append(dict(zip(cols_v, row)))
             
-            # Extrair OSs
+            # OSs
             cursor.execute(oracle_query_os, empresa=settings.EMPRESA_CODIGO, garagem=settings.GARAGEM_CODIGO)
             cols_os = [col[0].lower() for col in cursor.description]
             for row in cursor.fetchall():
@@ -89,24 +122,35 @@ async def sync_frota_globus():
                 item["tipo_manutencao"] = mapear_tipo_os(item.get("tipo_raw"))
                 item["status_os"] = mapear_status_os(item.get("status_raw"))
                 os_raw.append(item)
+
+            # Abastecimentos
+            cursor.execute(oracle_query_abast, empresa=settings.EMPRESA_CODIGO, garagem=settings.GARAGEM_CODIGO)
+            cols_ab = [col[0].lower() for col in cursor.description]
+            for row in cursor.fetchall():
+                abast_raw.append(dict(zip(cols_ab, row)))
                 
         conn.close()
     except Exception as e:
         logger.error(f"Erro na extração Oracle: {str(e)}")
         return {"status": "error", "message": str(e)}
 
-    # AUDITORIA DE DADOS
+    # AUDITORIA
     aprovado_v, veiculos_limpos, relatorio_v = DataAuditor.auditar_frota(veiculos_raw)
-    if not aprovado_v:
-        logger.error(f"Auditoria de Frota Rejeitada: {relatorio_v['erros']}")
-        return {"status": "rejected", "relatorio": relatorio_v}
-
     prefixos_validos = {v["prefixo"] for v in veiculos_limpos}
+    
     aprovado_os, os_limpas, relatorio_os = DataAuditor.auditar_ordens_servico(os_raw, prefixos_validos)
+    aprovado_ab, abast_limpos, relatorio_ab = DataAuditor.auditar_abastecimentos(abast_raw, prefixos_validos)
 
-    # PERSISTÊNCIA EM LOTE NO POSTGRESQL (BULK UPSERT)
+    # DEDUPLICAÇÃO EM MEMÓRIA PARA EVITAR CONFLITO NO LOTE DO POSTGRESQL
+    os_unique_dict = {item["numero_os"]: item for item in os_limpas}
+    os_limpas_unique = list(os_unique_dict.values())
+
+    abast_unique_dict = {item["chave_abastecimento"]: item for item in abast_limpos}
+    abast_limpos_unique = list(abast_unique_dict.values())
+
+    # PERSISTÊNCIA NO POSTGRESQL (BULK UPSERT)
     async with AsyncSessionLocal() as db:
-        # 1. Atualizar Veículos
+        # 1. Veículos
         await db.execute(delete(Veiculo).where(Veiculo.prefixo.not_in(prefixos_validos)))
         for item in veiculos_limpos:
             res = await db.execute(select(Veiculo).where(Veiculo.prefixo == item["prefixo"]))
@@ -124,11 +168,11 @@ async def sync_frota_globus():
                 ))
         await db.flush()
 
-        # 2. Bulk Upsert de OSs em Lotes de 1.000 registros
-        if os_limpas:
+        # 2. Bulk Upsert de OSs
+        if os_limpas_unique:
             batch_size = 1000
-            for i in range(0, len(os_limpas), batch_size):
-                batch = os_limpas[i:i + batch_size]
+            for i in range(0, len(os_limpas_unique), batch_size):
+                batch = os_limpas_unique[i:i + batch_size]
                 stmt = pg_insert(OrdemServico).values(batch)
                 stmt = stmt.on_conflict_do_update(
                     index_elements=['numero_os'],
@@ -141,16 +185,40 @@ async def sync_frota_globus():
                 )
                 await db.execute(stmt)
 
-        # 3. Log de Auditoria
+        # 3. Bulk Upsert de Abastecimentos
+        if abast_limpos_unique:
+            batch_size = 1000
+            for i in range(0, len(abast_limpos_unique), batch_size):
+                batch = abast_limpos_unique[i:i + batch_size]
+                stmt = pg_insert(Abastecimento).values(batch)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=['chave_abastecimento'],
+                    set_={
+                        'litros': stmt.excluded.litros,
+                        'km_odometro': stmt.excluded.km_odometro,
+                        'km_rodado': stmt.excluded.km_rodado,
+                        'km_por_litro': stmt.excluded.km_por_litro,
+                        'bomba': stmt.excluded.bomba,
+                        'tanque': stmt.excluded.tanque
+                    }
+                )
+                await db.execute(stmt)
+
+        # Log de Auditoria
         audit_entry = AuditLogSync(
-            lidos_oracle=len(veiculos_raw) + len(os_raw),
-            aprovados_auditoria=len(veiculos_limpos) + len(os_limpas),
-            rejeitados=relatorio_v["rejeitados"] + relatorio_os["rejeitados"],
+            lidos_oracle=len(veiculos_raw) + len(os_raw) + len(abast_raw),
+            aprovados_auditoria=len(veiculos_limpos) + len(os_limpas_unique) + len(abast_limpos_unique),
+            rejeitados=relatorio_v["rejeitados"] + relatorio_os["rejeitados"] + relatorio_ab["rejeitados"],
             status="SUCCESS",
-            detalhes_anomalia={"frota": relatorio_v, "ordens_servico": relatorio_os}
+            detalhes_anomalia={"frota": relatorio_v, "ordens_servico": relatorio_os, "abastecimentos": relatorio_ab}
         )
         db.add(audit_entry)
         await db.commit()
 
-    logger.info(f"Sincronização concluída! {len(veiculos_limpos)} veículos e {len(os_limpas)} OSs processadas.")
-    return {"status": "success", "veiculos": len(veiculos_limpos), "ordens_servico": len(os_limpas)}
+    logger.info(f"Sincronização concluída com sucesso! {len(veiculos_limpos)} veículos, {len(os_limpas_unique)} OSs e {len(abast_limpos_unique)} abastecimentos.")
+    return {
+        "status": "success", 
+        "veiculos": len(veiculos_limpos), 
+        "ordens_servico": len(os_limpas_unique),
+        "abastecimentos": len(abast_limpos_unique)
+    }

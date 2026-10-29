@@ -10,6 +10,7 @@ import app.models
 from app.models.auditoria import AuditLogSync
 from app.api.frota import router as frota_router
 from app.api.ordem_servico import router as os_router
+from app.api.abastecimento import router as abast_router
 from app.core.scheduler import start_scheduler
 from app.services.globus_sync import sync_frota_globus
 
@@ -35,6 +36,7 @@ async def startup():
 
 app.include_router(frota_router)
 app.include_router(os_router)
+app.include_router(abast_router)
 
 @app.get("/")
 async def read_root():
@@ -52,7 +54,6 @@ async def trigger_globus_sync(background_tasks: BackgroundTasks):
 
 @app.post("/api/sync/globus-direct")
 async def trigger_globus_sync_direct():
-    """Executa a sincronização de forma síncrona para retornar o resultado direto no terminal."""
     return await sync_frota_globus()
 
 if __name__ == "__main__":

@@ -8,6 +8,13 @@ interface MetricOs {
   corretivas: number;
 }
 
+interface MetricAbast {
+  total_litros: number;
+  total_km_rodado: number;
+  media_kml_geral: number;
+  total_abastecimentos: number;
+}
+
 interface OrdemServico {
   id: number;
   numero_os: string;
@@ -22,10 +29,11 @@ interface OrdemServico {
 export default function Home() {
   const [totalFrota, setTotalFrota] = useState<number | null>(null);
   const [metricasOs, setMetricasOs] = useState<MetricOs | null>(null);
+  const [metricasAbast, setMetricasAbast] = useState<MetricAbast | null>(null);
   const [ordensServico, setOrdensServico] = useState<OrdemServico[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Filtros da Tabela
+  // Filtros
   const [searchPrefixo, setSearchPrefixo] = useState('');
   const [filterStatus, setFilterStatus] = useState('TODOS');
   const [filterTipo, setFilterTipo] = useState('TODOS');
@@ -35,18 +43,21 @@ export default function Home() {
     async function fetchData() {
       setLoading(true);
       try {
-        const [resFrota, resMetrics, resOs] = await Promise.all([
+        const [resFrota, resMetricsOs, resMetricsAbast, resOs] = await Promise.all([
           fetch('http://192.168.50.101:8000/api/frota/'),
           fetch('http://192.168.50.101:8000/api/os/metrics'),
+          fetch('http://192.168.50.101:8000/api/abastecimento/metrics'),
           fetch(`http://192.168.50.101:8000/api/os/?limit=${limit}`)
         ]);
         
         const dataFrota = await resFrota.json();
-        const dataMetrics = await resMetrics.json();
+        const dataMetricsOs = await resMetricsOs.json();
+        const dataMetricsAbast = await resMetricsAbast.json();
         const dataOs = await resOs.json();
 
         setTotalFrota(Array.isArray(dataFrota) ? dataFrota.length : 0);
-        setMetricasOs(dataMetrics);
+        setMetricasOs(dataMetricsOs);
+        setMetricasAbast(dataMetricsAbast);
         setOrdensServico(Array.isArray(dataOs) ? dataOs : []);
       } catch (err) {
         console.error('Erro ao carregar dados do dashboard:', err);
@@ -57,7 +68,6 @@ export default function Home() {
     fetchData();
   }, [limit]);
 
-  // Filtragem local instantânea
   const osFiltradas = useMemo(() => {
     return ordensServico.filter((os) => {
       const matchPrefixo = os.veiculo_prefixo.toLowerCase().includes(searchPrefixo.toLowerCase()) ||
@@ -84,7 +94,7 @@ export default function Home() {
             <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-3">
               ConecttaOps
               <span className="text-xs bg-cyan-950 text-cyan-400 border border-cyan-800 px-2.5 py-1 rounded-full font-mono">
-                v1.2.0
+                v1.3.0
               </span>
             </h1>
             <p className="text-sm text-slate-400 mt-1">
@@ -96,42 +106,42 @@ export default function Home() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
             </span>
-            <span className="text-xs font-mono text-emerald-400 font-semibold">DATA AUDITOR ACTIVE</span>
+            <span className="text-xs font-mono text-emerald-400 font-semibold">FUEL & MAINTENANCE ENGINE ACTIVE</span>
           </div>
         </header>
 
-        {/* Top Cards */}
+        {/* Métricas Principais (Manutenção + Combustível) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Frota Operacional</p>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Frota Validada</p>
             <p className="text-3xl font-extrabold text-white mt-2">
               {loading ? '...' : totalFrota} <span className="text-sm font-normal text-slate-500">ônibus</span>
             </p>
-            <p className="text-xs text-slate-500 mt-2">Frotas validadas: 016, 029, 057</p>
+            <p className="text-xs text-slate-500 mt-2">Garagem 002 JTU</p>
           </div>
 
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-            <p className="text-xs font-semibold text-amber-400 uppercase tracking-wider">OSs em Aberto / Oficina</p>
+            <p className="text-xs font-semibold text-amber-400 uppercase tracking-wider">OSs em Oficina</p>
             <p className="text-3xl font-extrabold text-white mt-2">
               {loading ? '...' : metricasOs?.os_em_aberto}
             </p>
-            <p className="text-xs text-slate-500 mt-2">Serviços pendentes de conclusão</p>
+            <p className="text-xs text-slate-500 mt-2">Serviços em andamento</p>
           </div>
 
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-            <p className="text-xs font-semibold text-blue-400 uppercase tracking-wider">Preventivas (Desde 2024)</p>
+            <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">Média Geral Consumo</p>
             <p className="text-3xl font-extrabold text-white mt-2">
-              {loading ? '...' : totalPreventivas.toLocaleString('pt-BR')}
+              {loading ? '...' : metricasAbast?.media_kml_geral} <span className="text-sm font-normal text-slate-500">Km/L</span>
             </p>
-            <p className="text-xs text-slate-500 mt-2">Revisões programadas ({pctPreventiva}%)</p>
+            <p className="text-xs text-slate-500 mt-2">{metricasAbast?.total_abastecimentos.toLocaleString('pt-BR')} registros</p>
           </div>
 
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-            <p className="text-xs font-semibold text-rose-400 uppercase tracking-wider">Corretivas (Desde 2024)</p>
+            <p className="text-xs font-semibold text-cyan-400 uppercase tracking-wider">Volume de Combustível</p>
             <p className="text-3xl font-extrabold text-white mt-2">
-              {loading ? '...' : totalCorretivas.toLocaleString('pt-BR')}
+              {loading ? '...' : (metricasAbast?.total_litros ? (metricasAbast.total_litros / 1000000).toFixed(2) + 'M' : '0')} <span className="text-sm font-normal text-slate-500">Litros</span>
             </p>
-            <p className="text-xs text-slate-500 mt-2">Reparos mecânicos ({pctCorretiva}%)</p>
+            <p className="text-xs text-slate-500 mt-2">Km total: {metricasAbast?.total_km_rodado ? (metricasAbast.total_km_rodado / 1000000).toFixed(2) + 'M Km' : '0'}</p>
           </div>
         </div>
 
@@ -139,7 +149,7 @@ export default function Home() {
         <section className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
           <div className="flex justify-between items-center">
             <h2 className="text-base font-semibold text-white">Distribuição do Tipo de Manutenção</h2>
-            <span className="text-xs text-slate-400 font-mono">Globus DW Historical</span>
+            <span className="text-xs text-slate-400 font-mono">Histórico DW Globus</span>
           </div>
 
           <div className="space-y-3">
@@ -169,17 +179,16 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Painel Tabela de Ordens de Serviço */}
+        {/* Tabela de Ordens de Serviço */}
         <section className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-5">
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
             <div>
               <h2 className="text-lg font-semibold text-white">Ordens de Serviço Recentes</h2>
-              <p className="text-xs text-slate-400">Inspeção detalhada da frota de 97 veículos da JTU</p>
+              <p className="text-xs text-slate-400">Inspeção detalhada da frota urbana de Jacareí</p>
             </div>
 
             {/* Filtros */}
             <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-              {/* Campo de Busca */}
               <input
                 type="text"
                 placeholder="Buscar Prefixo ou Nº OS..."
@@ -188,7 +197,6 @@ export default function Home() {
                 className="bg-slate-950 border border-slate-800 text-sm text-slate-200 px-3 py-2 rounded-lg focus:outline-none focus:border-cyan-500 w-full sm:w-48"
               />
 
-              {/* Filtro Status */}
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
@@ -201,7 +209,6 @@ export default function Home() {
                 <option value="CANCELADA">Cancelada</option>
               </select>
 
-              {/* Filtro Tipo */}
               <select
                 value={filterTipo}
                 onChange={(e) => setFilterTipo(e.target.value)}
@@ -213,7 +220,6 @@ export default function Home() {
                 <option value="PREDITIVA">Preditiva</option>
               </select>
 
-              {/* Limite de Registros */}
               <select
                 value={limit}
                 onChange={(e) => setLimit(Number(e.target.value))}
@@ -226,7 +232,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Tabela de OS */}
           <div className="overflow-x-auto border border-slate-800 rounded-lg">
             <table className="w-full text-left text-sm text-slate-300">
               <thead className="bg-slate-950 text-xs font-semibold uppercase text-slate-400 border-b border-slate-800">
@@ -244,13 +249,13 @@ export default function Home() {
                 {loading ? (
                   <tr>
                     <td colSpan={7} className="text-center py-8 text-slate-500">
-                      Carregando ordens de serviço...
+                      Carregando dados...
                     </td>
                   </tr>
                 ) : osFiltradas.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="text-center py-8 text-slate-500">
-                      Nenhuma ordem de serviço encontrada com os filtros selecionados.
+                      Nenhum registro encontrado.
                     </td>
                   </tr>
                 ) : (
@@ -287,16 +292,13 @@ export default function Home() {
                         {os.data_fechamento ? new Date(os.data_fechamento).toLocaleDateString('pt-BR') : '-'}
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-400 max-w-xs truncate" title={os.descricao_servico}>
-                        {os.descricao_servico || 'Sem descrição cadastrada'}
+                        {os.descricao_servico || 'Sem descrição'}
                       </td>
                     </tr>
                   ))
                 )}
               </tbody>
             </table>
-          </div>
-          <div className="text-xs text-slate-500 text-right">
-            Exibindo {osFiltradas.length} de {ordensServico.length} registros carregados.
           </div>
         </section>
 
