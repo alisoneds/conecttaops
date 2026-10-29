@@ -7,17 +7,11 @@ on:
 
 jobs:
   deploy:
-    name: Deploy na VM de Producao
-    runs-on: ubuntu-latest
+    name: Deploy na VM Local
+    runs-on: self-hosted
 
     steps:
-      - name: Executar Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.VM_HOST }}
-          username: ${{ secrets.VM_USER }}
-          key: ${{ secrets.VM_SSH_KEY }}
-          port: 22
-          script: |
-            cd ~/conecttaops
-            ./deploy_prod.sh
+      - name: Executar Deploy Local
+        run: |
+          cd ~/conecttaops
+          ./deploy_prod.sh
