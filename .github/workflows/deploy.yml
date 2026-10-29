@@ -1,0 +1,23 @@
+name: Deploy Continuo - ConecttaOps Producao
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy na VM de Producao
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Executar Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          port: 22
+          script: |
+            cd ~/conecttaops
+            ./deploy_prod.sh
