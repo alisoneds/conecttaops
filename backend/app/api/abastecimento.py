@@ -28,7 +28,6 @@ async def metricas_abastecimento(db: AsyncSession = Depends(get_db)):
         total_litros = float(row.total_litros or 0) if row else 0.0
         total_km = float(row.total_km or 0) if row else 0.0
         
-        # Média Ponderada Real: Total de Km / Total de Litros
         media_kml = (total_km / total_litros) if total_litros > 0 else 0.0
 
         return {
@@ -46,7 +45,6 @@ async def ranking_outliers(db: AsyncSession = Depends(get_db)):
     try:
         data_corte = datetime(2026, 1, 1)
         
-        # Piores desempenhos (Menor Km/L)
         res_piores = await db.execute(
             select(
                 Abastecimento.veiculo_prefixo,
@@ -70,7 +68,6 @@ async def ranking_outliers(db: AsyncSession = Depends(get_db)):
             for r in res_piores.all()
         ]
 
-        # Melhores desempenhos (Maior Km/L)
         res_melhores = await db.execute(
             select(
                 Abastecimento.veiculo_prefixo,
@@ -103,15 +100,27 @@ async def ranking_outliers(db: AsyncSession = Depends(get_db)):
 @router.get("")
 async def listar_abastecimentos(
     prefixo: Optional[str] = None,
-    limit: int = 100,
+    page: int = 1,
+    page_size: int = 15,
     db: AsyncSession = Depends(get_db)
 ):
     try:
         data_corte = datetime(2026, 1, 1)
-        query = select(Abastecimento).where(Abastecimento.data_abastecimento >= data_corte)
-        if prefixo:
-            query = query.where(Abastecimento.veiculo_prefixo.ilike(f"%{prefixo.strip()}%"))
-        query = query.order_by(desc(Abastecimento.data_abastecimento)).limit(limit)
+        base_query = select(Abastecimento).where(Abastecimento.data_abastecimento >= data_corte)
+        count_query = select(func.count(Abastecimento.id)).where(Abastecimento.data_abastecimento >= data_corte)
+        
+        if prefixo and prefixo.strip():
+            filter_pref = Abastecimento.veiculo_prefixo.ilike(f"%{prefixo.strip()}%")
+            base_query = base_query.where(filter_pref)
+            count_query = count_query.where(filter_pref)
+
+        res_total = await db.execute(count_query)
+        total_items = res_total.scalar() or 0
+        total_pages = (total_items + page_size - 1) // page_size if page_size > 0 else 1
+
+        offset = (page - 1) * page_size
+        query = base_query.order_by(desc(Abastecimento.data_abastecimento)).offset(offset).limit(page_size)
+
         res = await db.execute(query)
         rows = res.scalars().all()
         
@@ -129,7 +138,20 @@ async def listar_abastecimentos(
                 "km_rodado": round(float(a.km_rodado or 0), 1),
                 "km_por_litro": round(float(a.km_por_litro or 0), 2)
             })
-        return resultado
+
+        return {
+            "total": total_items,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "items": resultado
+        }
     except Exception as e:
         print(f"Erro ao listar abastecimentos: {e}")
-        return []
+        return {
+            "total": 0,
+            "page": 1,
+            "page_size": page_size,
+            "total_pages": 1,
+            "items": []
+        }

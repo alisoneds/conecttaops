@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 
 interface MetricasAbastecimento {
   total_litros: number;
@@ -38,17 +38,24 @@ export default function AbastecimentoPage() {
   const [metricas, setMetricas] = useState<MetricasAbastecimento | null>(null);
   const [rankings, setRankings] = useState<RankingData>({ piores: [], melhores: [] });
   const [registros, setRegistros] = useState<RegistroAbastecimento[]>([]);
+  
+  // Estados de Paginação e Filtros
   const [loading, setLoading] = useState(true);
+  const [loadingTable, setLoadingTable] = useState(true);
   const [searchPrefixo, setSearchPrefixo] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(15);
+  const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
+  // Carregar Métricas e Rankings estáticos
   useEffect(() => {
-    async function fetchAbastData() {
+    async function fetchStaticData() {
       setLoading(true);
       try {
-        const [resMetrics, resRankings, resRegs] = await Promise.all([
+        const [resMetrics, resRankings] = await Promise.all([
           fetch('/api/v1/abastecimento/metrics'),
-          fetch('/api/v1/abastecimento/ranking-outliers'),
-          fetch('/api/v1/abastecimento?limit=150')
+          fetch('/api/v1/abastecimento/ranking-outliers')
         ]);
 
         if (resMetrics.ok) {
@@ -59,25 +66,42 @@ export default function AbastecimentoPage() {
           const data = await resRankings.json();
           setRankings(data);
         }
-        if (resRegs.ok) {
-          const data = await resRegs.json();
-          setRegistros(Array.isArray(data) ? data : []);
-        }
       } catch (err) {
-        console.error('Erro ao carregar dados de abastecimento:', err);
+        console.error('Erro ao carregar métricas de abastecimento:', err);
       } finally {
         setLoading(false);
       }
     }
-    fetchAbastData();
+    fetchStaticData();
   }, []);
 
-  const registrosFiltrados = useMemo(() => {
-    if (!searchPrefixo.trim()) return registros;
-    return registros.filter((r) =>
-      r.prefixo.toLowerCase().includes(searchPrefixo.trim().toLowerCase())
-    );
-  }, [registros, searchPrefixo]);
+  // Carregar Eventos de Abastecimento Paginados
+  const fetchAbastecimentos = useCallback(async (p: number, pref: string) => {
+    setLoadingTable(true);
+    try {
+      const url = `/api/v1/abastecimento?page=${p}&page_size=${pageSize}&prefixo=${encodeURIComponent(pref)}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        setRegistros(Array.isArray(data.items) ? data.items : []);
+        setTotalItems(data.total || 0);
+        setTotalPages(data.total_pages || 1);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar abastecimentos paginados:', err);
+    } finally {
+      setLoadingTable(false);
+    }
+  }, [pageSize]);
+
+  useEffect(() => {
+    fetchAbastecimentos(page, searchPrefixo);
+  }, [page, searchPrefixo, fetchAbastecimentos]);
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchPrefixo(e.target.value);
+    setPage(1); // Reseta para a primeira página ao pesquisar
+  };
 
   return (
     <main className="p-4 md:p-8 space-y-6">
@@ -132,7 +156,7 @@ export default function AbastecimentoPage() {
       {/* Painéis Executivos para Tomada de Decisão (Rankings) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {/* Painel de Ofensores (Ação Imediata) */}
+        {/* Painel de Ofensores */}
         <section className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <div>
@@ -173,7 +197,7 @@ export default function AbastecimentoPage() {
           </div>
         </section>
 
-        {/* Painel de Eficiência (Benchmark) */}
+        {/* Painel de Eficiência */}
         <section className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <div>
@@ -216,12 +240,12 @@ export default function AbastecimentoPage() {
 
       </div>
 
-      {/* Histórico Auditado de Abastecimentos */}
+      {/* Tabela Paginada de Eventos de Abastecimento */}
       <section className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-5">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h2 className="text-lg font-semibold text-white">Eventos Recentes de Abastecimento em Pista</h2>
-            <p className="text-xs text-slate-400">Registros diretos das bombas da Garagem 002 (JTU)</p>
+            <p className="text-xs text-slate-400">Registros diretos das bombas da Garagem 002 (JTU) desde 01/01/2026</p>
           </div>
 
           <div className="flex items-center gap-3 w-full sm:w-auto">
@@ -229,8 +253,8 @@ export default function AbastecimentoPage() {
               type="text"
               placeholder="Filtrar por Prefixo..."
               value={searchPrefixo}
-              onChange={(e) => setSearchPrefixo(e.target.value)}
-              className="bg-slate-950 border border-slate-800 text-sm text-slate-200 px-3 py-2 rounded-lg focus:outline-none focus:border-cyan-500 w-full sm:w-64"
+              onChange={handleSearchChange}
+              className="bg-slate-950 border border-slate-800 text-sm text-slate-200 px-3 py-2 rounded-lg focus:outline-none focus:border-cyan-500 w-full sm:w-64 font-mono"
             />
           </div>
         </div>
@@ -249,20 +273,20 @@ export default function AbastecimentoPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
-              {loading ? (
+              {loadingTable ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-8 text-slate-500">
-                    A carregar eventos de abastecimento...
+                  <td colSpan={7} className="text-center py-8 text-slate-500 font-mono">
+                    A carregar eventos da página {page}...
                   </td>
                 </tr>
-              ) : registrosFiltrados.length === 0 ? (
+              ) : registros.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="text-center py-8 text-slate-500">
                     Nenhum registro encontrado.
                   </td>
                 </tr>
               ) : (
-                registrosFiltrados.map((r) => {
+                registros.map((r) => {
                   const kml = r.km_por_litro;
                   let badge = (
                     <span className="inline-block px-2.5 py-0.5 text-xs rounded-full font-semibold bg-emerald-950 text-emerald-400 border border-emerald-800">
@@ -299,6 +323,37 @@ export default function AbastecimentoPage() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Controles de Paginação */}
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-2 border-t border-slate-800/80 text-xs text-slate-400">
+          <div>
+            Exibindo <span className="font-mono text-slate-200">{totalItems > 0 ? (page - 1) * pageSize + 1 : 0}</span> a{' '}
+            <span className="font-mono text-slate-200">{Math.min(page * pageSize, totalItems)}</span> de{' '}
+            <span className="font-mono font-bold text-cyan-400">{totalItems.toLocaleString('pt-BR')}</span> abastecimentos
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1 || loadingTable}
+              className="bg-slate-950 hover:bg-slate-800 disabled:opacity-40 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-800 font-semibold transition-all"
+            >
+              ← Anterior
+            </button>
+
+            <span className="font-mono px-2 py-1 bg-slate-950 rounded border border-slate-800">
+              Página <strong className="text-white">{page}</strong> de <strong className="text-slate-400">{totalPages}</strong>
+            </span>
+
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages || loadingTable}
+              className="bg-slate-950 hover:bg-slate-800 disabled:opacity-40 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-800 font-semibold transition-all"
+            >
+              Próxima →
+            </button>
+          </div>
         </div>
       </section>
 
