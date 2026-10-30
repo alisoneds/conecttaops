@@ -1,20 +1,24 @@
-from fastapi import FastAPI, BackgroundTasks, Depends
+import logging
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text, select
-from sqlalchemy.ext.asyncio import AsyncSession
-import uvicorn
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 
-from app.db.session import AsyncSessionLocal, engine
-from app.models.base import Base
-import app.models
-from app.models.auditoria import AuditLogSync
 from app.api.frota import router as frota_router
-from app.api.ordem_servico import router as os_router
-from app.api.abastecimento import router as abast_router
-from app.core.scheduler import start_scheduler
+from app.api.manutencao import router as manutencao_router
+from app.api.abastecimento import router as abastecimento_router
+from app.api.componentes import router as componentes_router
+from app.api.sync import router as sync_router, gov_router
 from app.services.globus_sync import sync_frota_globus
 
-app = FastAPI(title="ConecttaOps API", version="1.0.0")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("conecttaops")
+
+app = FastAPI(
+    title="Conecttaops API",
+    description="HUB Operacional e BI de Manutenção - Garagem 002 JTU",
+    version="1.4.0"
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -24,37 +28,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-async def get_db():
-    async with AsyncSessionLocal() as session:
-        yield session
+app.include_router(frota_router)
+app.include_router(manutencao_router)
+app.include_router(abastecimento_router)
+app.include_router(componentes_router)
+app.include_router(sync_router)
+app.include_router(gov_router)
+
+scheduler = AsyncIOScheduler()
 
 @app.on_event("startup")
-async def startup():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    start_scheduler()
+async def startup_event():
+    trigger = CronTrigger(hour=3, minute=0)
+    scheduler.add_job(sync_frota_globus, trigger, id="daily_globus_sync", replace_existing=True)
+    scheduler.start()
+    logger.info("--> Agendador automático iniciado: Carga Globus diária programada para as 03:00 AM.")
 
-app.include_router(frota_router)
-app.include_router(os_router)
-app.include_router(abast_router)
+@app.on_event("shutdown")
+async def shutdown_event():
+    scheduler.shutdown()
 
 @app.get("/")
-async def read_root():
-    return {"status": "online", "message": "Backend Operante"}
-
-@app.get("/api/audit/logs")
-async def get_audit_logs(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(AuditLogSync).order_by(AuditLogSync.executado_em.desc()).limit(20))
-    return result.scalars().all()
-
-@app.post("/api/sync/globus")
-async def trigger_globus_sync(background_tasks: BackgroundTasks):
-    background_tasks.add_task(sync_frota_globus)
-    return {"status": "started", "message": "Sincronização iniciada em segundo plano."}
-
-@app.post("/api/sync/globus-direct")
-async def trigger_globus_sync_direct():
-    return await sync_frota_globus()
-
-if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+def read_root():
+    return {"status": "online", "system": "Conecttaops HUB", "version": "1.4.0"}
