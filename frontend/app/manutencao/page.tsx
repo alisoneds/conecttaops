@@ -1,198 +1,216 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 
 interface MetricasManutencao {
   oss_pendentes: number;
-  total_oss_2026: number;
-  concluidas_2026: number;
+  total_oss: number;
+  oss_concluidas: number;
 }
 
-interface OrdemServico {
+interface OSItem {
   id: number;
   numero_os: string;
   veiculo_prefixo: string;
-  tipo_manutencao: string;
-  status_os: string;
   data_abertura: string;
-  data_fechamento?: string;
-  descricao_servico?: string;
+  status: string;
+  tipo_manutencao: string;
+  descricao_servico: string;
 }
 
 export default function ManutencaoPage() {
   const [metricas, setMetricas] = useState<MetricasManutencao | null>(null);
-  const [ordens, setOrdens] = useState<OrdemServico[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('TODOS');
-  const [tipoFilter, setTipoFilter] = useState('TODOS');
+  // Paginação
+  const [registros, setRegistros] = useState<OSItem[]>([]);
+  const [searchPrefixo, setSearchPrefixo] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(15);
+  const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loadingTable, setLoadingTable] = useState(false);
 
   useEffect(() => {
-    async function fetchManutencaoData() {
+    async function fetchMetrics() {
       setLoading(true);
       try {
-        const [resMetrics, resOrdens] = await Promise.all([
-          fetch('/api/v1/manutencao/metrics'),
-          fetch('/api/v1/manutencao/ordens')
-        ]);
-
-        if (resMetrics.ok) {
-          const dataMetrics = await resMetrics.json();
-          setMetricas(dataMetrics);
-        }
-
-        if (resOrdens.ok) {
-          const dataOrdens = await resOrdens.json();
-          setOrdens(Array.isArray(dataOrdens) ? dataOrdens : []);
+        const res = await fetch('/api/v1/manutencao/metrics');
+        if (res.ok) {
+          const data = await res.json();
+          setMetricas(data);
         }
       } catch (err) {
-        console.error('Erro ao carregar dados de manutenção:', err);
+        console.error('Erro ao carregar métricas:', err);
       } finally {
         setLoading(false);
       }
     }
-    fetchManutencaoData();
+    fetchMetrics();
   }, []);
 
-  const ordensFiltradas = ordens.filter((o) => {
-    const matchSearch =
-      o.numero_os.toLowerCase().includes(search.toLowerCase()) ||
-      o.veiculo_prefixo.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === 'TODOS' || o.status_os === statusFilter;
-    const matchTipo = tipoFilter === 'TODOS' || o.tipo_manutencao === tipoFilter;
-    return matchSearch && matchStatus && matchTipo;
-  });
+  const fetchOSs = useCallback(async (p: number, pref: string) => {
+    setLoadingTable(true);
+    try {
+      const url = `/api/v1/manutencao?page=${p}&page_size=${pageSize}&prefixo=${encodeURIComponent(pref)}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        setRegistros(Array.isArray(data.items) ? data.items : []);
+        setTotalItems(data.total || 0);
+        setTotalPages(data.total_pages || 1);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar OSs paginadas:', err);
+    } finally {
+      setLoadingTable(false);
+    }
+  }, [pageSize]);
+
+  useEffect(() => {
+    fetchOSs(page, searchPrefixo);
+  }, [page, searchPrefixo, fetchOSs]);
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchPrefixo(e.target.value);
+    setPage(1);
+  };
 
   return (
     <main className="p-4 md:p-8 space-y-6">
       <header className="border-b border-slate-800 pb-4">
         <h1 className="text-2xl font-bold text-white flex items-center gap-3">
-          🔧 Módulo 2: Manutenção & Ordens de Serviço
+          🛠️ Módulo MAN: Manutenção & Ordens de Serviço
         </h1>
         <p className="text-sm text-slate-400 mt-1">
-          Monitoramento de Intervenções de Oficina, OSs Pendentes e Histórico (2026)
+          Monitoramento e Execução de Oficina da Garagem 002 — JTU
         </p>
       </header>
 
-      {/* KPIs */}
+      {/* KPIs Corrigidos */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {/* Indicador Ajustado: OSs PENDENTES */}
+        
+        {/* OSs Pendentes */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-          <p className="text-xs font-semibold text-amber-400 uppercase tracking-wider">
-            OSs PENDENTES
-          </p>
-          <p className="text-3xl font-extrabold text-white mt-2">
-            {loading ? '...' : metricas?.oss_pendentes ?? 0}
+          <p className="text-xs font-bold text-amber-500 uppercase tracking-wider">OSs PENDENTES</p>
+          <p className="text-4xl font-extrabold text-white mt-2 font-mono tracking-tight">
+            {loading ? '...' : (metricas?.oss_pendentes ?? 0).toLocaleString('pt-BR')}
           </p>
           <p className="text-xs text-slate-500 mt-2">OSs Abertas / Em Execução (2026)</p>
         </div>
 
+        {/* Total de OSs */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-            Total de OSs (2026)
-          </p>
-          <p className="text-3xl font-extrabold text-white mt-2">
-            {loading ? '...' : metricas?.total_oss_2026 ?? 0}
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">TOTAL DE OSs (2026)</p>
+          <p className="text-4xl font-extrabold text-white mt-2 font-mono tracking-tight">
+            {loading ? '...' : (metricas?.total_oss ?? 0).toLocaleString('pt-BR')}
           </p>
           <p className="text-xs text-slate-500 mt-2">Abertas desde 01/01/2026</p>
         </div>
 
+        {/* OSs Concluídas */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-          <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">
-            OSs Concluídas
-          </p>
-          <p className="text-3xl font-extrabold text-white mt-2">
-            {loading ? '...' : metricas?.concluidas_2026 ?? 0}
+          <p className="text-xs font-bold text-emerald-500 uppercase tracking-wider">OSs CONCLUÍDAS</p>
+          <p className="text-4xl font-extrabold text-white mt-2 font-mono tracking-tight">
+            {loading ? '...' : (metricas?.oss_concluidas ?? 0).toLocaleString('pt-BR')}
           </p>
           <p className="text-xs text-slate-500 mt-2">Finalizadas em Oficina (2026)</p>
         </div>
+
       </div>
 
-      {/* Tabela de OSs */}
+      {/* Tabela Geral de Ordens de Serviço (Paginada) */}
       <section className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-5">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h2 className="text-lg font-semibold text-white">Ordens de Serviço em Acompanhamento</h2>
-            <p className="text-xs text-slate-400">Registros sincronizados do Globus (>= 01/01/2026)</p>
+            <h2 className="text-lg font-semibold text-white">Histórico Geral de Intervenções</h2>
+            <p className="text-xs text-slate-400">Listagem de todas as OSs desde 01/01/2026</p>
           </div>
-
-          <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+          <div className="w-full sm:w-auto">
             <input
               type="text"
-              placeholder="Pesquisar OS ou Veículo..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="bg-slate-950 border border-slate-800 text-sm text-slate-200 px-3 py-2 rounded-lg focus:outline-none focus:border-cyan-500 w-full sm:w-56"
+              placeholder="Filtrar por Prefixo..."
+              value={searchPrefixo}
+              onChange={handleSearchChange}
+              className="bg-slate-950 border border-slate-800 text-sm text-slate-200 px-3 py-2 rounded-lg focus:outline-none focus:border-cyan-500 w-full sm:w-64 font-mono"
             />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-slate-950 border border-slate-800 text-sm text-slate-200 px-3 py-2 rounded-lg focus:outline-none focus:border-cyan-500"
-            >
-              <option value="TODOS">Todos os Status</option>
-              <option value="Aberta">Abertas</option>
-              <option value="Em Andamento">Em Andamento</option>
-              <option value="Concluida">Concluídas</option>
-            </select>
           </div>
         </div>
 
         <div className="overflow-x-auto border border-slate-800 rounded-lg">
           <table className="w-full text-left text-sm text-slate-300">
-            <thead className="bg-slate-950 text-xs font-semibold uppercase text-slate-400 border-b border-slate-800">
+            <thead className="bg-slate-950 text-[11px] font-semibold uppercase text-slate-400 border-b border-slate-800">
               <tr>
-                <th className="px-4 py-3">Nº OS</th>
-                <th className="px-4 py-3">Veículo</th>
-                <th className="px-4 py-3">Tipo Manutenção</th>
-                <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Data Abertura</th>
-                <th className="px-4 py-3">Descrição do Serviço</th>
+                <th className="px-4 py-3">Nº OS</th>
+                <th className="px-4 py-3">Prefixo</th>
+                <th className="px-4 py-3">Tipo Manutenção</th>
+                <th className="px-4 py-3">Descrição da Falha/Serviço</th>
+                <th className="px-4 py-3 text-right">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60">
-              {loading ? (
+            <tbody className="divide-y divide-slate-800/60 font-mono text-xs">
+              {loadingTable ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-8 text-slate-500">
-                    A carregar ordens de serviço...
-                  </td>
+                  <td colSpan={6} className="text-center py-8 text-slate-500 font-sans">Carregando ordens de serviço...</td>
                 </tr>
-              ) : ordensFiltradas.length === 0 ? (
+              ) : registros.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-8 text-slate-500">
-                    Nenhuma ordem de serviço encontrada.
-                  </td>
+                  <td colSpan={6} className="text-center py-8 text-slate-500 font-sans">Nenhum registro encontrado.</td>
                 </tr>
               ) : (
-                ordensFiltradas.map((os) => (
-                  <tr key={os.id} className="hover:bg-slate-800/40 transition-colors">
-                    <td className="px-4 py-3 font-mono font-bold text-cyan-400">#{os.numero_os}</td>
-                    <td className="px-4 py-3 font-mono text-slate-200">{os.veiculo_prefixo}</td>
-                    <td className="px-4 py-3 text-slate-300">{os.tipo_manutencao}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-block px-2.5 py-0.5 text-xs rounded-full font-semibold ${
-                          os.status_os === 'Concluida'
-                            ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
-                            : os.status_os === 'Em Andamento'
-                            ? 'bg-amber-950 text-amber-400 border border-amber-800'
-                            : 'bg-slate-800 text-slate-300 border border-slate-700'
-                        }`}
-                      >
-                        {os.status_os}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-slate-400 font-mono">
-                      {os.data_abertura ? new Date(os.data_abertura).toLocaleDateString('pt-BR') : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-slate-400 max-w-md truncate" title={os.descricao_servico}>
-                      {os.descricao_servico || 'Sem descrição'}
-                    </td>
-                  </tr>
-                ))
+                registros.map((r) => {
+                  const isPendente = r.status.toLowerCase().includes('aberta') || r.status.toLowerCase().includes('pendente') || r.status.toLowerCase().includes('execu');
+                  return (
+                    <tr key={r.id} className="hover:bg-slate-800/40 transition-colors">
+                      <td className="px-4 py-3 text-slate-400">{r.data_abertura}</td>
+                      <td className="px-4 py-3 font-bold text-slate-200">{r.numero_os}</td>
+                      <td className="px-4 py-3 font-bold text-cyan-400">{r.veiculo_prefixo}</td>
+                      <td className="px-4 py-3 text-slate-400 font-sans">{r.tipo_manutencao}</td>
+                      <td className="px-4 py-3 text-slate-200 font-sans max-w-xs truncate" title={r.descricao_servico}>{r.descricao_servico}</td>
+                      <td className="px-4 py-3 text-right font-sans">
+                        <span className={`inline-block px-2.5 py-0.5 text-[10px] rounded-full font-semibold border ${
+                          isPendente 
+                            ? 'bg-amber-950 text-amber-400 border-amber-800' 
+                            : 'bg-emerald-950 text-emerald-400 border-emerald-800'
+                        }`}>
+                          {r.status}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Paginação */}
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-2 border-t border-slate-800/80 text-xs text-slate-400">
+          <div>
+            Exibindo <span className="font-mono text-slate-200">{totalItems > 0 ? (page - 1) * pageSize + 1 : 0}</span> a{' '}
+            <span className="font-mono text-slate-200">{Math.min(page * pageSize, totalItems)}</span> de{' '}
+            <span className="font-mono font-bold text-cyan-400">{totalItems.toLocaleString('pt-BR')}</span> OSs
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1 || loadingTable}
+              className="bg-slate-950 hover:bg-slate-800 disabled:opacity-40 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-800 font-semibold transition-all"
+            >
+              ← Anterior
+            </button>
+            <span className="font-mono px-2 py-1 bg-slate-950 rounded border border-slate-800">
+              Página <strong className="text-white">{page}</strong> de <strong className="text-slate-400">{totalPages}</strong>
+            </span>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages || loadingTable}
+              className="bg-slate-950 hover:bg-slate-800 disabled:opacity-40 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-800 font-semibold transition-all"
+            >
+              Próxima →
+            </button>
+          </div>
         </div>
       </section>
     </main>
