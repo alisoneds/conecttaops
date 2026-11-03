@@ -1,119 +1,99 @@
+'use client';
+
 import './globals.css';
 import Link from 'next/link';
-
-export const metadata = {
-  title: 'CONECTTA OPS - HUB Inteligente ERP Globus',
-  description: 'Módulos de Oficina: ABA, CPN, FRT e MAN',
-};
+import { useState, useEffect } from 'react';
 
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const [syncing, setSyncing] = useState(false);
+  const [lastSyncText, setLastSyncText] = useState('03:00 AM OK');
+
+  const handleGlobalRefresh = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch('/api/v1/etl/sync', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setLastSyncText(`${data.ultima_atualizacao} OK`);
+        // Dispara evento global para recarregar os dados da página ativa em tempo real
+        window.dispatchEvent(new Event('conecttaops-refresh'));
+      }
+    } catch (err) {
+      console.error('Erro ao acionar Carga Manual Global:', err);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
-    <html lang="pt-BR" className="dark">
-      <body className="bg-slate-950 text-slate-100 flex min-h-screen font-sans antialiased">
+    <html lang="pt-BR">
+      <body className="min-h-screen bg-[#090d16] text-slate-100 flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200">
         
-        {/* Sidebar em Árvore estilo Globus */}
-        <aside className="w-72 bg-slate-900 border-r border-slate-800 flex flex-col justify-between p-4 shrink-0 select-none">
-          <div className="space-y-6">
-            
-            {/* Logo do Sistema */}
-            <div className="border-b border-slate-800 pb-4">
+        {/* Top Navbar Executiva com Carga Manual Unificada */}
+        <header className="sticky top-0 z-40 bg-[#090d16]/95 backdrop-blur-md border-b border-slate-800 px-4 md:px-8 py-3.5 flex flex-col lg:flex-row justify-between items-center gap-4 shadow-xl">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-500 flex items-center justify-center font-black text-white text-lg shadow-lg shadow-cyan-500/20 border border-cyan-400/30">
+              C
+            </div>
+            <div>
               <div className="flex items-center gap-2">
-                <span className="text-xl font-black text-cyan-400 tracking-wider">CONECTTA</span>
-                <span className="bg-cyan-500/20 text-cyan-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-cyan-500/30">OPS</span>
+                <span className="font-extrabold text-base tracking-tight text-white">CONECTTAOPS</span>
+                <span className="text-[10px] font-mono font-bold bg-cyan-950/80 text-cyan-400 border border-cyan-800/60 px-1.5 py-0.5 rounded">v1.6.0</span>
               </div>
-              <p className="text-[11px] text-slate-500 mt-1 font-mono">Garagem 002 — JTU (Oracle Globus)</p>
-            </div>
-
-            {/* Menu em Estrutura de Árvore (Tree-View Globus) */}
-            <div className="space-y-2">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-2">
-                Módulos do Sistema
-              </p>
-
-              {/* No Raiz: Oficina */}
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 px-2 py-1.5 font-bold text-sm text-slate-200">
-                  <span className="text-slate-400 text-xs">🗂️</span>
-                  <span className="w-4 h-4 rounded bg-rose-700 text-white font-serif text-[11px] font-bold flex items-center justify-center shadow-sm">G</span>
-                  <span>Oficina</span>
-                </div>
-
-                {/* Sub-itens da Árvore */}
-                <div className="ml-5 pl-3 border-l-2 border-slate-800 space-y-1">
-                  
-                  <Link
-                    href="/abastecimento"
-                    className="flex items-center gap-2 px-2.5 py-2 rounded-md text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white transition-all group"
-                  >
-                    <span className="w-3.5 h-3.5 rounded bg-rose-800 text-white font-serif text-[9px] font-bold flex items-center justify-center shrink-0">G</span>
-                    <span className="truncate">ABA — Abastecimento</span>
-                  </Link>
-
-                  <Link
-                    href="/componentes"
-                    className="flex items-center gap-2 px-2.5 py-2 rounded-md text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white transition-all group"
-                  >
-                    <span className="w-3.5 h-3.5 rounded bg-rose-800 text-white font-serif text-[9px] font-bold flex items-center justify-center shrink-0">G</span>
-                    <span className="truncate">CPN — Componentes</span>
-                  </Link>
-
-                  <Link
-                    href="/frota"
-                    className="flex items-center gap-2 px-2.5 py-2 rounded-md text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white transition-all group"
-                  >
-                    <span className="w-3.5 h-3.5 rounded bg-rose-800 text-white font-serif text-[9px] font-bold flex items-center justify-center shrink-0">G</span>
-                    <span className="truncate">FRT — Frota</span>
-                  </Link>
-
-                  <Link
-                    href="/manutencao"
-                    className="flex items-center gap-2 px-2.5 py-2 rounded-md text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white transition-all group"
-                  >
-                    <span className="w-3.5 h-3.5 rounded bg-rose-800 text-white font-serif text-[9px] font-bold flex items-center justify-center shrink-0">G</span>
-                    <span className="truncate">MAN — Manutenção</span>
-                  </Link>
-
-                </div>
-              </div>
-
-              {/* Seção de Governança */}
-              <div className="pt-4 border-t border-slate-800/80">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-2 mb-1">
-                  Governança ETL
-                </p>
-
-                <Link
-                  href="/governanca"
-                  className="flex items-center justify-between px-2.5 py-2 rounded-md text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white transition-all"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">🛡️</span>
-                    <span>Auditoria & Sync</span>
-                  </div>
-                  <span className="text-[9px] bg-emerald-950 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-800 font-mono">03:00</span>
-                </Link>
-              </div>
-
+              <p className="text-[11px] text-slate-400 font-medium">HUB Operacional — Garagem 002 (JTU Jacareí)</p>
             </div>
           </div>
 
-          {/* Status do Rodapé */}
-          <div className="border-t border-slate-800 pt-3 text-[11px] text-slate-500 flex items-center justify-between">
-            <span className="flex items-center gap-1.5 font-mono">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              GLOBUS ONLINE
-            </span>
-          </div>
-        </aside>
+          <div className="flex items-center gap-4 flex-wrap justify-center">
+            {/* Links dos Módulos */}
+            <nav className="flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800 text-xs font-semibold">
+              <Link href="/frota" className="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-all">
+                🚌 Frota (FRT)
+              </Link>
+              <Link href="/manutencao" className="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-all">
+                🛠️ Manutenção (MAN)
+              </Link>
+              <Link href="/abastecimento" className="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-all">
+                ⛽ Abastecimento (ABA)
+              </Link>
+              <Link href="/componentes" className="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-all">
+                ⚙️ Componentes (CPN)
+              </Link>
+            </nav>
 
-        {/* Área Principal */}
-        <div className="flex-1 overflow-y-auto">
+            {/* Ação de Refresh / Carga Manual Global */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleGlobalRefresh}
+                disabled={syncing}
+                className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white font-bold text-xs px-3.5 py-1.5 rounded-xl shadow-lg shadow-cyan-600/20 border border-cyan-400/30 flex items-center gap-2 transition-all active:scale-95"
+                title="Disparar sincronização em tempo real de todos os módulos com o ERP Globus"
+              >
+                <span className={`text-xs ${syncing ? 'animate-spin' : ''}`}>🔄</span>
+                {syncing ? 'Sincronizando...' : 'Carga Manual'}
+              </button>
+
+              <div className="flex items-center gap-2 bg-emerald-950/40 border border-emerald-800/50 px-3 py-1.5 rounded-full text-[11px] font-mono text-emerald-400">
+                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                ETL Globus: <span className="text-white font-bold">{lastSyncText}</span>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Conteúdo Principal Full-Width */}
+        <main className="flex-1 w-full max-w-[1600px] mx-auto p-4 md:p-8">
           {children}
-        </div>
+        </main>
+
+        <footer className="border-t border-slate-800/60 py-4 px-8 text-center text-xs text-slate-400 font-mono">
+          Jacareí Transporte Urbano LTDA — Sincronização automatizada diária (03:00 AM)
+        </footer>
+
       </body>
     </html>
   );

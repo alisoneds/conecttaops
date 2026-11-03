@@ -40,12 +40,10 @@ export default function FrotaPage() {
   const [page, setPage] = useState(1);
   const pageSize = 15;
 
-  // Estado do Modal Raio-X 360º
   const [selectedPrefixo, setSelectedPrefixo] = useState<string | null>(null);
   const [raioXData, setRaioXData] = useState<RaioXData | null>(null);
   const [loadingRaioX, setLoadingRaioX] = useState(false);
   
-  // Estado da Lista de OSs Paginada do Veículo no Modal
   const [ossList, setOssList] = useState<OSItem[]>([]);
   const [ossPage, setOssPage] = useState(1);
   const [ossTotalPages, setOssTotalPages] = useState(1);
@@ -72,19 +70,16 @@ export default function FrotaPage() {
     fetchFrota(searchPrefixo);
   }, [searchPrefixo, fetchFrota]);
 
-  // Função para abrir o Raio-X 360º do Veículo
   const handleOpenRaioX = async (prefixo: string) => {
     setSelectedPrefixo(prefixo);
     setLoadingRaioX(true);
     setOssPage(1);
     try {
-      // Busca os indicadores consolidados do veículo
       const resRx = await fetch(`/api/v1/frota/${prefixo}/raio-x`);
       if (resRx.ok) {
         const dataRx = await resRx.json();
         setRaioXData(dataRx);
       }
-      // Busca as OSs paginadas do veículo (página 1)
       fetchVehicleOSs(prefixo, 1);
     } catch (err) {
       console.error('Erro ao abrir Raio-X:', err);
@@ -123,15 +118,12 @@ export default function FrotaPage() {
     setOssList([]);
   };
 
-  // Paginação da tabela principal
   const totalItems = veiculos.length;
   const totalPages = Math.ceil(totalItems / pageSize) || 1;
   const paginatedVeiculos = veiculos.slice((page - 1) * pageSize, page * pageSize);
 
   return (
-    <main className="p-4 md:p-8 space-y-6">
-      
-      {/* Header com indicador de Garagem */}
+    <div className="space-y-6">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-800/80 pb-5">
         <div>
           <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-3">
@@ -146,7 +138,6 @@ export default function FrotaPage() {
         </div>
       </header>
 
-      {/* Tabela Executiva com Glassmorphism */}
       <section className="glass-card rounded-2xl p-6 space-y-5">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
@@ -211,7 +202,6 @@ export default function FrotaPage() {
           </table>
         </div>
 
-        {/* Controles de Paginação */}
         <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-2 border-t border-slate-800/80 text-xs text-slate-400">
           <div>
             Exibindo <span className="font-mono text-white font-bold">{totalItems > 0 ? (page - 1) * pageSize + 1 : 0}</span> a{' '}
@@ -240,11 +230,9 @@ export default function FrotaPage() {
         </div>
       </section>
 
-      {/* Modal Executivo: Raio-X 360º */}
       {selectedPrefixo && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-800 w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col my-auto">
-            {/* Modal Header */}
             <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950/80">
               <div className="flex items-center gap-3">
                 <span className="text-lg font-black text-cyan-400 font-mono flex items-center gap-2">
@@ -264,13 +252,11 @@ export default function FrotaPage() {
               </button>
             </div>
 
-            {/* Modal Content */}
             <div className="p-6 overflow-y-auto space-y-6 flex-1">
               {loadingRaioX ? (
                 <div className="py-12 text-center text-slate-400 font-sans">Carregando indicadores do Raio-X...</div>
               ) : (
                 <>
-                  {/* KPIs do Veículo */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-4 text-center">
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Média Ponderada</p>
@@ -298,7 +284,6 @@ export default function FrotaPage() {
                     </div>
                   </div>
 
-                  {/* Histórico de OSs do Veículo */}
                   <div className="space-y-3">
                     <div className="flex justify-between items-center">
                       <h3 className="text-sm font-bold text-white tracking-tight">Histórico de Ordens de Serviço (2026)</h3>
@@ -343,7 +328,6 @@ export default function FrotaPage() {
                       </table>
                     </div>
 
-                    {/* Paginação do Modal */}
                     {ossTotalPages > 1 && (
                       <div className="flex justify-between items-center text-xs text-slate-400 pt-2 font-mono">
                         <span>Página {ossPage} de {ossTotalPages}</span>
@@ -372,7 +356,6 @@ export default function FrotaPage() {
           </div>
         </div>
       )}
-
-    </main>
+    </div>
   );
 }
