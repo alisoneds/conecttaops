@@ -63,6 +63,9 @@ export default function RootLayout({
               <Link href="/componentes" className="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-all">
                 ⚙️ Componentes (CPN)
               </Link>
+              <Link href="/preditivo" className="px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-all">
+                🧠 Preditivo (PRE)
+              </Link>
             </nav>
 
             {/* Ação de Refresh / Carga Manual Global */}

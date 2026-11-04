@@ -28,6 +28,12 @@ const modules = [
     icon: '🛡️',
     badge: 'Módulo 4',
   },
+  {
+    name: 'IA & Preditivo',
+    href: '/preditivo',
+    icon: '🧠',
+    badge: 'Módulo 5',
+  },
 ];
 
 export default function Sidebar() {
@@ -79,7 +85,7 @@ export default function Sidebar() {
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
           </span>
-          <span className="text-xs font-mono text-slate-400">ENGINE ONLINE (v1.3)</span>
+          <span className="text-xs font-mono text-slate-400">ENGINE ONLINE (v1.4)</span>
         </div>
       </div>
     </aside>
