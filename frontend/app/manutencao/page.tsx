@@ -403,5 +403,138 @@ export default function ManutencaoPage() {
         </div>
       </section>
     </div>
+
+    // Trecho de renderização do Modal da Tela Interativa Globus dentro de frontend/app/manutencao/page.tsx
+{osSelecionadaModal && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+    <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-5xl overflow-hidden shadow-2xl">
+      {/* Topo do Modal */}
+      <div className="bg-slate-800 px-6 py-4 flex items-center justify-between border-b border-slate-700">
+        <div className="flex items-center gap-3">
+          <span className="bg-blue-600/20 text-blue-400 font-bold px-3 py-1 rounded border border-blue-500/30">
+            O.S. #{osSelecionadaModal.numero_os}
+          </span>
+          <span className="text-slate-300 font-semibold">Veículo {osSelecionadaModal.veiculo_prefixo}</span>
+          <span className="text-xs bg-slate-700 text-slate-300 px-2 py-1 rounded">Emp: 002 | Fil: 001 | Garagem: 002</span>
+        </div>
+        <button onClick={() => setOsSelecionadaModal(null)} className="text-slate-400 hover:text-white font-bold text-lg">✕</button>
+      </div>
+
+      {/* Conteúdo da Tela Interativa */}
+      <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
+        
+        {/* Bloco 1: Indicadores e Métricas de Tempo e Valores */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-950 p-4 rounded-lg border border-slate-800">
+          <div>
+            <p className="text-xs text-slate-400">Total Horas</p>
+            <p className="text-base font-bold text-white">{osSelecionadaModal.total_horas || '01:10:00'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-400">Km Acumulado</p>
+            <p className="text-base font-bold text-sky-400">{osSelecionadaModal.km_acumulado || '12.167'} km</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-400">Mão de Obra</p>
+            <p className="text-base font-bold text-emerald-400">R$ {osSelecionadaModal.valor_mao_de_obra || '13,65'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-400">Total Geral OS</p>
+            <p className="text-base font-bold text-emerald-400">R$ {osSelecionadaModal.valor_total_geral || '13,65'}</p>
+          </div>
+        </div>
+
+        {/* Bloco 2: Serviços / Defeitos */}
+        <div className="space-y-2">
+          <h4 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">Serviços & Defeitos Registrados</h4>
+          <div className="bg-slate-950 rounded-lg border border-slate-800 p-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            <div>
+              <p className="text-xs text-slate-500">Grp. Serviço Executado</p>
+              <p className="text-slate-200 font-medium">{osSelecionadaModal.grupo_servico || '100 - TAPEÇARIA'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Serviço Executado</p>
+              <p className="text-slate-200 font-medium">{osSelecionadaModal.servico_descricao || '002 - VERIFICAR ASSENTO'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Grp. Defeito</p>
+              <p className="text-slate-200 font-medium">{osSelecionadaModal.grupo_defeito || '100 - TAPEÇARIA'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Defeito Apontado</p>
+              <p className="text-amber-400 font-medium">{osSelecionadaModal.defeito_descricao || '007 - BANCO QUEBRADO'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Tp. Operação</p>
+              <p className="text-emerald-400 font-medium">{osSelecionadaModal.tipo_operacao || '051 - REPARADO'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Complemento</p>
+              <p className="text-slate-300">{osSelecionadaModal.complemento_observacao || 'BANCO DO CADEIRANTE'}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Bloco 3: Executantes do Serviço (Mão de Obra) */}
+        <div className="space-y-2">
+          <h4 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">Executantes do Serviço (Oficina)</h4>
+          <div className="bg-slate-950 rounded-lg border border-slate-800 overflow-hidden">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-800 text-slate-400">
+                <tr>
+                  <th className="p-3">Funcionário Executante</th>
+                  <th className="p-3">Horas Dedicadas</th>
+                  <th className="p-3">Custo Mão de Obra</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800 text-slate-300">
+                {(osSelecionadaModal.executantes || [
+                  { funcionario_executante: '002834 - THIAGO CARLINI MONTEIRO', horas_executante: '01:10', valor_mo_executante: '13.65' }
+                ]).map((exec: any, idx: number) => (
+                  <tr key={idx}>
+                    <td className="p-3 font-medium text-white">{exec.funcionario_executante}</td>
+                    <td className="p-3">{exec.horas_executante}</td>
+                    <td className="p-3 text-emerald-400 font-semibold">R$ {exec.valor_mo_executante}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Bloco 4: Materiais Aplicados */}
+        <div className="space-y-2">
+          <h4 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">Materiais & Peças Aplicadas</h4>
+          <div className="bg-slate-950 rounded-lg border border-slate-800 p-4 text-center text-xs text-slate-500">
+            {osSelecionadaModal.materiais && osSelecionadaModal.materiais.length > 0 ? (
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-800 text-slate-400">
+                  <tr>
+                    <th className="p-2">Requisição</th>
+                    <th className="p-2">Material</th>
+                    <th className="p-2">Qtd</th>
+                    <th className="p-2">Vlr Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {osSelecionadaModal.materiais.map((mat: any, i: number) => (
+                    <tr key={i}>
+                      <td className="p-2">{mat.numero_requisicao}</td>
+                      <td className="p-2">{mat.material_descricao}</td>
+                      <td className="p-2">{mat.quantidade}</td>
+                      <td className="p-2 text-emerald-400">R$ {mat.valor_total}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p>Nenhum material de estoque requisitado para esta Ordem de Serviço.</p>
+            )}
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+)}
   );
 }
